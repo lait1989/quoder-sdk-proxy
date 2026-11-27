@@ -51,10 +51,13 @@ export function buildToolSystemPrompt(tools: OpenAITool[]): string {
     .filter((t) => t.type === "function" && t.function)
     .map((t) => {
       const fn = t.function;
-      const params = fn.parameters ? JSON.stringify(fn.parameters, null, 2) : "{}";
-      return `Function: ${fn.name}\nDescription: ${fn.description || "No description"}\nParameters (JSON Schema): ${params}`;
+      const params = fn.parameters ? JSON.stringify(fn.parameters) : "{}";
+      const desc = fn.description ? fn.description.replace(/\s+/g, " ").trim() : "";
+      return desc
+        ? `Function: ${fn.name} — ${desc}\nParameters: ${params}`
+        : `Function: ${fn.name}\nParameters: ${params}`;
     })
-    .join("\n\n");
+    .join("\n");
 
   return `You have access to the following functions. When you need to call a function, you MUST respond with ONLY a valid JSON object in this exact format and nothing else:
 

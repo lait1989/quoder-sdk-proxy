@@ -34,12 +34,22 @@ describe("toolPrompt", () => {
     assert.equal(res[1].arguments.description, "second");
   });
 
-  it("builds tool-injected prompt", () => {
+  it("builds compact tool-injected prompt without pretty-print indentation", () => {
     const prompt = buildPromptWithTools(
       [{ role: "user", content: "list files" }],
-      [{ type: "function", function: { name: "Bash", description: "Run shell", parameters: { type: "object" } } }],
+      [
+        {
+          type: "function",
+          function: {
+            name: "Bash",
+            description: "Run   shell\ncommand",
+            parameters: { type: "object", properties: { command: { type: "string" } } },
+          },
+        },
+      ],
     );
-    assert.ok(prompt.includes("Function: Bash"));
+    assert.ok(prompt.includes("Function: Bash — Run shell command"));
+    assert.ok(prompt.includes('Parameters: {"type":"object","properties":{"command":{"type":"string"}}}'));
     assert.ok(prompt.includes("User: list files"));
   });
 });
