@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseAllToolCallsFromText, buildPromptWithTools, buildConversationPrompt } from "../src/toolPrompt.js";
+import { parseAllToolCallsFromText, buildPromptWithTools, buildConversationPrompt, splitSystemAndPrompt } from "../src/toolPrompt.js";
 
 describe("toolPrompt", () => {
   it("parses single tool_call with unescaped quotes and multiline command", () => {
@@ -90,6 +90,17 @@ describe("toolPrompt", () => {
     assert.ok(prompt.includes("ORIGINAL_TASK_PROMPT"));
     assert.ok(prompt.includes("[truncated older tool output]"));
     assert.ok(prompt.includes("step_29"));
+  });
+
+  it("sanitizes Claude Code / Anthropic branding in systemPrompt to avoid upstream queue throttling", () => {
+    const { systemPrompt } = splitSystemAndPrompt(
+      [
+        { role: "system", content: "You are Claude Code, Anthropic's official CLI for Claude." },
+        { role: "user", content: "hi" },
+      ],
+      [],
+    );
+    assert.ok(!/claude|anthropic/i.test(systemPrompt));
   });
 
   it("builds compact tool-injected prompt without pretty-print indentation", () => {

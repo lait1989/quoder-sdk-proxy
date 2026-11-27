@@ -114,13 +114,22 @@ export function buildConversationPrompt(messages: SimpleMessage[]): string {
   return [first, "... [earlier middle turns omitted for speed] ...", ...keptTail].join("\n\n");
 }
 
+export function sanitizeSystemPromptForQoder(text: string): string {
+  return text
+    .replace(/Anthropic's official CLI for Claude/gi, "a CLI coding assistant")
+    .replace(/Claude Code/gi, "the coding assistant")
+    .replace(/\bAnthropic\b/gi, "the provider")
+    .replace(/\bClaude\b/gi, "Assistant");
+}
+
 export function splitSystemAndPrompt(
   messages: SimpleMessage[],
   tools: OpenAITool[],
 ): { systemPrompt: string; prompt: string } {
   const toolSystem = tools.length > 0 ? buildToolSystemPrompt(tools) : "";
   const systemMsg = messages.find((m) => m.role === "system");
-  const systemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
+  const rawSystemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
+  const systemContent = rawSystemContent ? sanitizeSystemPromptForQoder(rawSystemContent) : "";
   const systemPrompt = [toolSystem, systemContent].filter(Boolean).join("\n\n") ||
     "You are a helpful AI assistant.";
   const prompt = buildConversationPrompt(messages);
