@@ -1,5 +1,7 @@
 FROM node:22-slim
 
+RUN npm install -g @qoder-ai/qodercli@latest
+
 WORKDIR /app
 
 COPY package*.json ./
