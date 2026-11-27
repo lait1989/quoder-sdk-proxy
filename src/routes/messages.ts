@@ -137,8 +137,9 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
     req.on("aborted", () => abortController.abort());
 
     const executeQuery = async (onTextDelta?: (d: string) => void) => {
+      let resData;
       try {
-        return await daemon.runQuery({
+        resData = await daemon.runQuery({
           prompt: activePrompt,
           systemPrompt,
           model: requestedModel,
@@ -152,7 +153,7 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
         if (resumeSessionId) {
           console.warn(`[messages] resume failed (${(err as Error).message}), retrying fresh session`);
           sessionCache.invalidate(systemPrompt, modelKey, conv);
-          return await daemon.runQuery({
+          resData = await daemon.runQuery({
             prompt: fullPrompt,
             systemPrompt,
             model: requestedModel,
@@ -161,9 +162,33 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
             signal: abortController.signal,
             onTextDelta,
           });
+        } else {
+          throw err;
         }
-        throw err;
       }
+
+      if (hasTools) {
+        const parsed = parseAllToolCallsFromText(resData.text);
+        if (parsed.length === 0 && /<tool_call>|<function=/i.test(resData.text)) {
+          console.warn(
+            `[messages] truncated/unparsed XML tool_call (${resData.text.length} chars), retrying once`,
+          );
+          const retryPrompt =
+            'Your previous response was cut off at <tool_call> and could not be parsed. Do NOT output <tool_call> XML tags. Output ONLY the raw {"tool_call":{"name":"<function_name>","arguments":{...}}} JSON object.';
+          resData = await daemon.runQuery({
+            prompt: resData.sessionId ? retryPrompt : `${activePrompt}\n\nAssistant: ${resData.text}\n\nUser: ${retryPrompt}`,
+            systemPrompt,
+            model: requestedModel,
+            maxTokens: max_tokens,
+            persistSession: true,
+            resumeSessionId: resData.sessionId || resumeSessionId,
+            signal: abortController.signal,
+            onTextDelta,
+          });
+        }
+      }
+
+      return resData;
     };
 
     if (stream) {

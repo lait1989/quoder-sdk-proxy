@@ -65,7 +65,7 @@ export function buildToolSystemPrompt(tools: OpenAITool[]): string {
 
 {"tool_call":{"name":"<function_name>","arguments":<arguments_object>}}
 
-IMPORTANT: Do NOT attempt native/built-in CLI tool calls — they are disabled. To run any tool (Bash, Read, Edit, Write, Glob, Grep, etc.), output the raw {"tool_call":...} JSON object in your text response and the host client will execute it and return the result.
+IMPORTANT: Do NOT attempt native/built-in CLI tool calls — they are disabled. Do NOT wrap output in <tool_call> XML tags. To run any tool (Bash, Read, Edit, Write, Glob, Grep, etc.), output ONLY the raw {"tool_call":...} JSON object in your text response and the host client will execute it and return the result.
 If the user is asking a question, discussing code, or no tool call is needed, answer the user directly in plain text.
 
 Available functions:
