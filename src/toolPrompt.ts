@@ -1,3 +1,5 @@
+import { config } from "./config.js";
+
 export interface OpenAITool {
   type: "function";
   function: {
@@ -120,18 +122,29 @@ export function sanitizeSystemPromptForQoder(text: string): string {
     .replace(/Anthropic's official CLI for Claude/gi, "a CLI coding assistant")
     .replace(/Claude Code/gi, "the coding assistant")
     .replace(/\bAnthropic\b/gi, "the provider")
-    .replace(/\bClaude\b/gi, "Assistant");
+    .replace(/\bClaude\b/gi, "Assistant")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
+
+const CAVEMAN_RULES: Record<"off" | "lite" | "full", string> = {
+  off: "",
+  lite: "Output style: Be concise. Drop filler words and pleasantries. Keep code, paths, and JSON tool calls 100% standard.",
+  full: "Output style: Reply in terse fragments. Drop articles, filler words, pleasantries, and repetition. Keep code, paths, and JSON tool calls 100% standard.",
+};
 
 export function splitSystemAndPrompt(
   messages: SimpleMessage[],
   tools: OpenAITool[],
+  cavemanMode: "off" | "lite" | "full" = config.cavemanMode,
 ): { systemPrompt: string; prompt: string } {
   const toolSystem = tools.length > 0 ? buildToolSystemPrompt(tools) : "";
   const systemMsg = messages.find((m) => m.role === "system");
   const rawSystemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
   const systemContent = rawSystemContent ? sanitizeSystemPromptForQoder(rawSystemContent) : "";
-  const systemPrompt = [systemContent, toolSystem].filter(Boolean).join("\n\n") ||
+  const cavemanRule = CAVEMAN_RULES[cavemanMode] || "";
+  const systemPrompt = [systemContent, toolSystem, cavemanRule].filter(Boolean).join("\n\n") ||
     "You are a helpful AI assistant.";
   const prompt = buildConversationPrompt(messages);
   return { systemPrompt, prompt };

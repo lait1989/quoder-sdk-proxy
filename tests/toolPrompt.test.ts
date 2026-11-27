@@ -92,15 +92,18 @@ describe("toolPrompt", () => {
     assert.ok(prompt.includes("step_29"));
   });
 
-  it("sanitizes Claude Code / Anthropic branding in systemPrompt to avoid upstream queue throttling", () => {
+  it("sanitizes Claude Code / Anthropic branding and collapses whitespace in systemPrompt", () => {
     const { systemPrompt } = splitSystemAndPrompt(
       [
-        { role: "system", content: "You are Claude Code, Anthropic's official CLI for Claude." },
+        { role: "system", content: "You are Claude Code, Anthropic's official CLI for Claude.   \n\n\n\nNext line." },
         { role: "user", content: "hi" },
       ],
       [],
+      "full",
     );
     assert.ok(!/claude|anthropic/i.test(systemPrompt));
+    assert.ok(!systemPrompt.includes("\n\n\n"));
+    assert.ok(systemPrompt.includes("Reply in terse fragments"));
   });
 
   it("builds compact tool-injected prompt without pretty-print indentation", () => {
