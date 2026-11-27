@@ -34,6 +34,27 @@ describe("toolPrompt", () => {
     assert.equal(res[1].arguments.description, "second");
   });
 
+  it("parses Qwen XML <tool_call><function=...><parameter=...> format", () => {
+    const raw = `<tool_call>
+  <function=Bash>
+  <parameter=command>
+  cd /home/crypto/crypto_processing && grep -n 'creditAmountlessTransfer\\|holdTransfer' src/services/order.service.ts | head -60
+  </parameter>
+  <parameter=description>
+  Locate amountless credit and AML hold functions
+  </parameter>
+  </function>
+  </tool_call>`;
+    const res = parseAllToolCallsFromText(raw);
+    assert.equal(res.length, 1);
+    assert.equal(res[0].name, "Bash");
+    assert.equal(
+      res[0].arguments.command,
+      "cd /home/crypto/crypto_processing && grep -n 'creditAmountlessTransfer\\|holdTransfer' src/services/order.service.ts | head -60",
+    );
+    assert.equal(res[0].arguments.description, "Locate amountless credit and AML hold functions");
+  });
+
   it("builds compact tool-injected prompt without pretty-print indentation", () => {
     const prompt = buildPromptWithTools(
       [{ role: "user", content: "list files" }],

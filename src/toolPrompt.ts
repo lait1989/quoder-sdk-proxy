@@ -203,8 +203,47 @@ function parseSingleChunk(chunk: string): ParsedToolCall | null {
   return null;
 }
 
+function parseXmlToolCalls(text: string): ParsedToolCall[] {
+  if (!text || !text.includes("<function=")) return [];
+  const results: ParsedToolCall[] = [];
+  const fnRe = /<function=([^\s>]+)>([\s\S]*?)(?:<\/function>|<\/tool_call>|$)/gi;
+  let fnMatch: RegExpExecArray | null;
+  while ((fnMatch = fnRe.exec(text)) !== null) {
+    const name = fnMatch[1].trim();
+    const body = fnMatch[2];
+    const args: Record<string, unknown> = {};
+    const paramRe = /<parameter=([^\s>]+)>([\s\S]*?)<\/parameter>/gi;
+    let pMatch: RegExpExecArray | null;
+    while ((pMatch = paramRe.exec(body)) !== null) {
+      const key = pMatch[1].trim();
+      const rawVal = pMatch[2].replace(/^\r?\n/, "").replace(/\r?\n\s*$/, "").trim();
+      if (
+        (rawVal.startsWith("{") && rawVal.endsWith("}")) ||
+        (rawVal.startsWith("[") && rawVal.endsWith("]")) ||
+        rawVal === "true" ||
+        rawVal === "false"
+      ) {
+        try {
+          args[key] = JSON.parse(rawVal);
+          continue;
+        } catch {
+          // keep as string
+        }
+      }
+      args[key] = rawVal;
+    }
+    if (name) {
+      results.push({ name, arguments: args });
+    }
+  }
+  return results;
+}
+
 export function parseAllToolCallsFromText(text: string): ParsedToolCall[] {
-  if (!text || !text.includes('"tool_call"')) return [];
+  if (!text) return [];
+  if (!text.includes('"tool_call"')) {
+    return parseXmlToolCalls(text);
+  }
 
   const results: ParsedToolCall[] = [];
   const starts: number[] = [];
