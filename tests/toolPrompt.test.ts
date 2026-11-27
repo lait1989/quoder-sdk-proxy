@@ -77,6 +77,19 @@ describe("toolPrompt", () => {
     assert.equal(res2[0].name, "Bash");
   });
 
+  it("preserves full conversation history beyond 20 messages", () => {
+    const msgs = [
+      { role: "user", content: "ORIGINAL_TASK_PROMPT" },
+      ...Array.from({ length: 30 }, (_, i) => ({
+        role: i % 2 === 0 ? "assistant" : "user",
+        content: `step_${i}`,
+      })),
+    ];
+    const prompt = buildPromptWithTools(msgs, []);
+    assert.ok(prompt.includes("ORIGINAL_TASK_PROMPT"));
+    assert.ok(prompt.includes("step_29"));
+  });
+
   it("builds compact tool-injected prompt without pretty-print indentation", () => {
     const prompt = buildPromptWithTools(
       [{ role: "user", content: "list files" }],

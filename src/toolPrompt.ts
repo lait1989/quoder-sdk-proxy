@@ -28,7 +28,7 @@ export function extractText(content: SimpleMessage["content"]): string {
 export function messagesToPrompt(messages: SimpleMessage[]): string {
   if (!messages || messages.length === 0) return "Hello";
   const systemMsg = messages.find((m) => m.role === "system");
-  const conversation = messages.filter((m) => m.role !== "system").slice(-20);
+  const conversation = messages.filter((m) => m.role !== "system");
 
   const parts: string[] = [];
   if (systemMsg) {
@@ -70,7 +70,7 @@ ${defs}`;
 }
 
 export function buildConversationPrompt(messages: SimpleMessage[]): string {
-  const conversation = messages.filter((m) => m.role !== "system").slice(-20);
+  const conversation = messages.filter((m) => m.role !== "system");
   const parts: string[] = [];
   for (const msg of conversation) {
     const txt = extractText(msg.content).trim();
@@ -101,7 +101,7 @@ export function buildPromptWithTools(messages: SimpleMessage[], tools: OpenAIToo
   const toolSystem = buildToolSystemPrompt(tools);
   const systemMsg = messages.find((m) => m.role === "system");
   const systemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
-  const conversation = messages.filter((m) => m.role !== "system").slice(-20);
+  const conversation = messages.filter((m) => m.role !== "system");
 
   const parts: string[] = [toolSystem];
   if (systemContent) parts.push(`System context: ${systemContent}`);
