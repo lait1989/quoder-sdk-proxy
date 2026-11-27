@@ -241,7 +241,11 @@ export class QoderDaemonManager {
       for await (const msg of q) {
         if (msg.type !== "stream_event") {
           const sub = "subtype" in msg ? String(msg.subtype) : "";
-          console.log(`[sdk] type=${msg.type}${sub ? " subtype=" + sub : ""}`);
+          if (sub === "model_queue_status") {
+            console.log("[sdk] model_queue_status:", JSON.stringify(msg));
+          } else {
+            console.log(`[sdk] type=${msg.type}${sub ? " subtype=" + sub : ""}`);
+          }
         }
         if (msg.type === "stream_event" && params.onTextDelta) {
           const ev = msg.event as { type?: string; delta?: { type?: string; text?: string } };
