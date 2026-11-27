@@ -145,7 +145,13 @@ export function sanitizeJsonStrings(raw: string): string {
 }
 
 function tryParseToolJson(raw: string): ParsedToolCall | null {
-  for (const candidate of [raw, sanitizeJsonStrings(raw)]) {
+  const sanitized = sanitizeJsonStrings(raw);
+  const candidates = [
+    raw,
+    sanitized,
+    sanitized.replace(/\}\s*\]+\s*(\}*)\s*$/, "}$1}"),
+  ];
+  for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate) as {
         tool_call?: { name?: string; arguments?: Record<string, unknown> };

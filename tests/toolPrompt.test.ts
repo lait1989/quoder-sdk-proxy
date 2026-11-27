@@ -63,6 +63,14 @@ describe("toolPrompt", () => {
     assert.equal(res[0].arguments.description, "Ищу все места");
   });
 
+  it("fixes stray ] bracket even when followed by } (e.g. }}]})", () => {
+    const raw = `{"tool_call":{"name":"Bash","arguments":{"command":"echo ok","description":"test"}}}]}`;
+    const res = parseAllToolCallsFromText(raw);
+    assert.equal(res.length, 1);
+    assert.equal(res[0].name, "Bash");
+    assert.equal(res[0].arguments.command, "echo ok");
+  });
+
   it("builds compact tool-injected prompt without pretty-print indentation", () => {
     const prompt = buildPromptWithTools(
       [{ role: "user", content: "list files" }],

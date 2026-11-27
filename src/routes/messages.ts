@@ -180,6 +180,9 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
         let stopReason = "end_turn";
         if (hasTools) {
           const toolCalls = parseAllToolCallsFromText(result.text);
+          if (toolCalls.length === 0 && result.text.includes("tool_call")) {
+            console.error("[messages] Failed to parse tool_call:", result.text.slice(0, 400), "...", result.text.slice(-200));
+          }
           if (toolCalls.length > 0) {
             toolCalls.forEach((tc, idx) => {
               sendEvent(res, "content_block_start", {
