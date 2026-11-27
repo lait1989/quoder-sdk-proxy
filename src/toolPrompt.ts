@@ -69,17 +69,49 @@ Available functions:
 ${defs}`;
 }
 
+const MAX_PROMPT_CHARS = parseInt(process.env.QODER_MAX_PROMPT_CHARS || "240000", 10);
+const OLD_TOOL_RESULT_MAX_CHARS = 1500;
+
+function formatMsgLine(msg: SimpleMessage, trimToolResults: boolean): string {
+  let txt = extractText(msg.content).trim();
+  if (!txt) return "";
+  if (trimToolResults && txt.length > OLD_TOOL_RESULT_MAX_CHARS && txt.includes("[Tool Result")) {
+    txt = txt.slice(0, OLD_TOOL_RESULT_MAX_CHARS) + "\n... [truncated older tool output]";
+  }
+  if (msg.role === "user") return `User: ${txt}`;
+  if (msg.role === "assistant") return `Assistant: ${txt}`;
+  if (msg.role === "tool") return `Tool result: ${txt}`;
+  return "";
+}
+
 export function buildConversationPrompt(messages: SimpleMessage[]): string {
   const conversation = messages.filter((m) => m.role !== "system");
-  const parts: string[] = [];
-  for (const msg of conversation) {
-    const txt = extractText(msg.content).trim();
-    if (!txt) continue;
-    if (msg.role === "user") parts.push(`User: ${txt}`);
-    else if (msg.role === "assistant") parts.push(`Assistant: ${txt}`);
-    else if (msg.role === "tool") parts.push(`Tool result: ${txt}`);
+  if (conversation.length === 0) return "Hello";
+
+  const recentCutoff = Math.max(0, conversation.length - 6);
+  const formatted = conversation
+    .map((m, idx) => formatMsgLine(m, idx < recentCutoff))
+    .filter(Boolean);
+
+  if (formatted.length === 0) return "Hello";
+
+  // Always keep the first message (initial task) and as many recent messages as fit within MAX_PROMPT_CHARS
+  const totalLen = formatted.reduce((acc, s) => acc + s.length + 2, 0);
+  if (totalLen <= MAX_PROMPT_CHARS) {
+    return formatted.join("\n\n");
   }
-  return parts.join("\n\n") || "Hello";
+
+  const first = formatted[0];
+  let budget = MAX_PROMPT_CHARS - first.length - 40;
+  const keptTail: string[] = [];
+  for (let i = formatted.length - 1; i >= 1; i--) {
+    const item = formatted[i];
+    if (item.length + 2 > budget && keptTail.length > 0) break;
+    keptTail.unshift(item);
+    budget -= item.length + 2;
+  }
+
+  return [first, "... [earlier middle turns omitted for speed] ...", ...keptTail].join("\n\n");
 }
 
 export function splitSystemAndPrompt(

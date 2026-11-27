@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseAllToolCallsFromText, buildPromptWithTools } from "../src/toolPrompt.js";
+import { parseAllToolCallsFromText, buildPromptWithTools, buildConversationPrompt } from "../src/toolPrompt.js";
 
 describe("toolPrompt", () => {
   it("parses single tool_call with unescaped quotes and multiline command", () => {
@@ -77,16 +77,18 @@ describe("toolPrompt", () => {
     assert.equal(res2[0].name, "Bash");
   });
 
-  it("preserves full conversation history beyond 20 messages", () => {
+  it("preserves full conversation history beyond 20 messages and truncates huge old tool results", () => {
     const msgs = [
       { role: "user", content: "ORIGINAL_TASK_PROMPT" },
+      { role: "user", content: `[Tool Result (t1): ${"X".repeat(5000)}]` },
       ...Array.from({ length: 30 }, (_, i) => ({
         role: i % 2 === 0 ? "assistant" : "user",
         content: `step_${i}`,
       })),
     ];
-    const prompt = buildPromptWithTools(msgs, []);
+    const prompt = buildConversationPrompt(msgs);
     assert.ok(prompt.includes("ORIGINAL_TASK_PROMPT"));
+    assert.ok(prompt.includes("[truncated older tool output]"));
     assert.ok(prompt.includes("step_29"));
   });
 
