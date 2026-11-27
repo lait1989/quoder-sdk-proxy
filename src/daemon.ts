@@ -193,7 +193,11 @@ export class QoderDaemonManager {
       else params.signal.addEventListener("abort", () => abortController.abort(), { once: true });
     }
 
-    const timer = setTimeout(() => abortController.abort(), config.timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+    }, config.timeoutMs);
     const startedAt = Date.now();
 
     let streamedText = "";
@@ -242,6 +246,10 @@ export class QoderDaemonManager {
             throw new Error(msg.errors.join("; "));
           }
         }
+      }
+
+      if (timedOut) {
+        throw new Error(`Qoder SDK query timed out after ${config.timeoutMs}ms`);
       }
 
       return {
