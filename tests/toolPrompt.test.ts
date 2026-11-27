@@ -55,6 +55,14 @@ describe("toolPrompt", () => {
     assert.equal(res[0].arguments.description, "Locate amountless credit and AML hold functions");
   });
 
+  it("fixes stray trailing ] bracket (e.g. }}] instead of }}}) with unescaped quotes", () => {
+    const raw = String.raw`{"tool_call":{"name":"Bash","arguments":{"command":"grep -rn \"orderNetAmount\|amountlessFinalDueRecord\" src/ ; echo ---; grep -rn \"amountlessFinalDueRecord\" src/ ","description":"Ищу все места"}}]`
+    const res = parseAllToolCallsFromText(raw);
+    assert.equal(res.length, 1);
+    assert.equal(res[0].name, "Bash");
+    assert.equal(res[0].arguments.description, "Ищу все места");
+  });
+
   it("builds compact tool-injected prompt without pretty-print indentation", () => {
     const prompt = buildPromptWithTools(
       [{ role: "user", content: "list files" }],

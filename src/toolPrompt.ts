@@ -195,7 +195,10 @@ function parseSingleChunk(chunk: string): ParsedToolCall | null {
   }
 
   if (depth > 0 && depth <= 3) {
-    const trimmed = sanitized.replace(/\s*<\/?tool_call>\s*$/i, "");
+    // Strip trailing non-JSON tags or stray ] brackets (e.g. "}}]") before closing braces
+    const trimmed = sanitized
+      .replace(/\s*<\/?tool_call>\s*$/i, "")
+      .replace(/\]+\s*$/, "");
     const res = tryParseToolJson(trimmed + "}".repeat(depth));
     if (res) return res;
   }
