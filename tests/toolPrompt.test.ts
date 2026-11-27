@@ -106,6 +106,25 @@ describe("toolPrompt", () => {
     assert.ok(systemPrompt.includes("Reply in terse fragments"));
   });
 
+  it("parses <tool_call>{\"name\":\"X\",\"arguments\":{...}}</tool_call> format (Qwen/Mistral bare JSON in XML tag)", () => {
+    const raw = `<tool_call>{"name": "Bash", "arguments": {"command": "ls -la /tmp", "description": "List files"}}</tool_call>`;
+    const res = parseAllToolCallsFromText(raw);
+    assert.equal(res.length, 1);
+    assert.equal(res[0].name, "Bash");
+    assert.equal(res[0].arguments.command, "ls -la /tmp");
+    assert.equal(res[0].arguments.description, "List files");
+  });
+
+  it("parses multiple <tool_call>{...}</tool_call> blocks", () => {
+    const raw = `First let me check.\n<tool_call>{"name": "Read", "arguments": {"file": "/tmp/a.txt"}}</tool_call>\nThen write.\n<tool_call>{"name": "Write", "arguments": {"file": "/tmp/b.txt", "content": "hello"}}</tool_call>`;
+    const res = parseAllToolCallsFromText(raw);
+    assert.equal(res.length, 2);
+    assert.equal(res[0].name, "Read");
+    assert.equal(res[0].arguments.file, "/tmp/a.txt");
+    assert.equal(res[1].name, "Write");
+    assert.equal(res[1].arguments.content, "hello");
+  });
+
   it("builds compact tool-injected prompt without pretty-print indentation", () => {
     const prompt = buildPromptWithTools(
       [{ role: "user", content: "list files" }],

@@ -327,8 +327,45 @@ function parseXmlToolCalls(text: string): ParsedToolCall[] {
   return results;
 }
 
+/**
+ * Handles: <tool_call>{"name":"X","arguments":{...}}</tool_call>
+ * Some models (e.g. Qwen) wrap a bare name/arguments JSON in <tool_call> tags.
+ */
+function parseXmlWrappedToolCalls(text: string): ParsedToolCall[] {
+  if (!text || !text.includes("<tool_call>")) return [];
+  const results: ParsedToolCall[] = [];
+  const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const inner = m[1].trim();
+    // Try {"name":"...","arguments":{...}}
+    try {
+      const parsed = JSON.parse(inner) as { name?: string; arguments?: Record<string, unknown> };
+      if (parsed?.name) {
+        results.push({ name: parsed.name, arguments: parsed.arguments ?? {} });
+        continue;
+      }
+    } catch {
+      // fall through
+    }
+    // Try {"tool_call":{"name":"...","arguments":{...}}}
+    const wrapped = tryParseToolJson(inner);
+    if (wrapped) results.push(wrapped);
+  }
+  return results;
+}
+
 export function parseAllToolCallsFromText(text: string): ParsedToolCall[] {
   if (!text) return [];
+
+  // Handle <tool_call>{...}</tool_call> XML-wrapped format (Qwen/Mistral style)
+  if (text.includes("<tool_call>") && !text.includes('"tool_call"')) {
+    const xmlWrapped = parseXmlWrappedToolCalls(text);
+    if (xmlWrapped.length > 0) return xmlWrapped;
+    // may still contain <function=...> inside
+    return parseXmlToolCalls(text);
+  }
+
   if (!text.includes('"tool_call"')) {
     return parseXmlToolCalls(text);
   }
