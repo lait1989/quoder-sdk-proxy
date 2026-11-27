@@ -2,8 +2,7 @@ import { Router, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import type { DaemonRunner } from "./messages.js";
 import {
-  buildPromptWithTools,
-  messagesToPrompt,
+  splitSystemAndPrompt,
   parseAllToolCallsFromText,
   type OpenAITool,
   type SimpleMessage,
@@ -30,9 +29,10 @@ export function createChatRouter(daemon: DaemonRunner): Router {
     }
 
     const hasTools = Array.isArray(tools) && tools.length > 0;
-    const prompt = hasTools
-      ? buildPromptWithTools(messages as SimpleMessage[], tools as OpenAITool[])
-      : messagesToPrompt(messages as SimpleMessage[]);
+    const { systemPrompt, prompt } = splitSystemAndPrompt(
+      messages as SimpleMessage[],
+      hasTools ? (tools as OpenAITool[]) : [],
+    );
 
     const id = newId("chatcmpl");
     const created = Math.floor(Date.now() / 1000);
@@ -63,6 +63,7 @@ export function createChatRouter(daemon: DaemonRunner): Router {
       try {
         const result = await daemon.runQuery({
           prompt,
+          systemPrompt,
           model: requestedModel,
           maxTokens: max_tokens,
           signal: abortController.signal,
@@ -148,6 +149,7 @@ export function createChatRouter(daemon: DaemonRunner): Router {
     try {
       const result = await daemon.runQuery({
         prompt,
+        systemPrompt,
         model: requestedModel,
         maxTokens: max_tokens,
         signal: abortController.signal,

@@ -59,16 +59,40 @@ export function buildToolSystemPrompt(tools: OpenAITool[]): string {
     })
     .join("\n");
 
-  return `You have access to the following functions. When you need to call a function, you MUST respond with ONLY a valid JSON object in this exact format and nothing else:
+  return `You have access to the following functions. If you need to invoke a function, respond with ONLY a valid JSON object in this exact format:
 
 {"tool_call":{"name":"<function_name>","arguments":<arguments_object>}}
 
-Do NOT include any explanation or text before or after the JSON when calling a tool. Only output the raw JSON object.
-
-If you do not need to call a function, respond normally with plain text.
+If the user is asking a question, discussing code, or no tool call is needed, answer the user directly in plain text. Only output the JSON object when you actually need to call a tool.
 
 Available functions:
 ${defs}`;
+}
+
+export function buildConversationPrompt(messages: SimpleMessage[]): string {
+  const conversation = messages.filter((m) => m.role !== "system").slice(-20);
+  const parts: string[] = [];
+  for (const msg of conversation) {
+    const txt = extractText(msg.content).trim();
+    if (!txt) continue;
+    if (msg.role === "user") parts.push(`User: ${txt}`);
+    else if (msg.role === "assistant") parts.push(`Assistant: ${txt}`);
+    else if (msg.role === "tool") parts.push(`Tool result: ${txt}`);
+  }
+  return parts.join("\n\n") || "Hello";
+}
+
+export function splitSystemAndPrompt(
+  messages: SimpleMessage[],
+  tools: OpenAITool[],
+): { systemPrompt: string; prompt: string } {
+  const toolSystem = tools.length > 0 ? buildToolSystemPrompt(tools) : "";
+  const systemMsg = messages.find((m) => m.role === "system");
+  const systemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
+  const systemPrompt = [toolSystem, systemContent].filter(Boolean).join("\n\n") ||
+    "You are a helpful AI assistant.";
+  const prompt = buildConversationPrompt(messages);
+  return { systemPrompt, prompt };
 }
 
 export function buildPromptWithTools(messages: SimpleMessage[], tools: OpenAITool[]): string {

@@ -21,7 +21,7 @@ describe("HTTP API", () => {
     getState: () => "ready",
     getModels: async () => MOCK_MODELS,
     runQuery: async (params) => {
-      if (params.prompt.includes("Available functions:")) {
+      if ((params.systemPrompt || params.prompt).includes("Available functions:")) {
         return {
           text: '{"tool_call":{"name":"Bash","arguments":{"command":"ls"}}}',
           resolvedModel: "qmodel_38max",

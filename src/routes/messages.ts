@@ -2,8 +2,7 @@ import { Router, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import type { QoderDaemonManager } from "../daemon.js";
 import {
-  buildPromptWithTools,
-  messagesToPrompt,
+  splitSystemAndPrompt,
   parseAllToolCallsFromText,
   type OpenAITool,
   type SimpleMessage,
@@ -114,9 +113,10 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
 
     const openAIMessages = toOpenAIMessages(system, messages);
     const hasTools = Array.isArray(tools) && tools.length > 0;
-    const prompt = hasTools
-      ? buildPromptWithTools(openAIMessages, toOpenAITools(tools))
-      : messagesToPrompt(openAIMessages);
+    const { systemPrompt, prompt } = splitSystemAndPrompt(
+      openAIMessages,
+      hasTools ? toOpenAITools(tools) : [],
+    );
 
     const msgId = newId("msg");
     const inputTokens = Math.max(1, Math.ceil(prompt.length / 4));
@@ -158,6 +158,7 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
       try {
         const result = await daemon.runQuery({
           prompt,
+          systemPrompt,
           model: requestedModel,
           maxTokens: max_tokens,
           signal: abortController.signal,
@@ -249,6 +250,7 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
     try {
       const result = await daemon.runQuery({
         prompt,
+        systemPrompt,
         model: requestedModel,
         maxTokens: max_tokens,
         signal: abortController.signal,
