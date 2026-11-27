@@ -69,6 +69,12 @@ describe("toolPrompt", () => {
     assert.equal(res.length, 1);
     assert.equal(res[0].name, "Bash");
     assert.equal(res[0].arguments.command, "echo ok");
+
+    const raw2 = String.raw`{"tool_call":{"name":"Bash","arguments":{"command":"grep -n 'a\|b' src/a.ts","description":"test"}}}`;
+    const raw2WithBracket = raw2.slice(0, -1) + "]}";
+    const res2 = parseAllToolCallsFromText(raw2WithBracket);
+    assert.equal(res2.length, 1);
+    assert.equal(res2[0].name, "Bash");
   });
 
   it("builds compact tool-injected prompt without pretty-print indentation", () => {

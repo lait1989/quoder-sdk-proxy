@@ -149,7 +149,7 @@ function tryParseToolJson(raw: string): ParsedToolCall | null {
   const candidates = [
     raw,
     sanitized,
-    sanitized.replace(/\}\s*\]+\s*(\}*)\s*$/, "}$1}"),
+    sanitized.replace(/\}\s*\]+\s*(\}*)\s*$/, "}$1"),
   ];
   for (const candidate of candidates) {
     try {
