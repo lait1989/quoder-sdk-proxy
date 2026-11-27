@@ -3,10 +3,12 @@ import crypto from "node:crypto";
 import type { QoderDaemonManager } from "../daemon.js";
 import {
   splitSystemAndPrompt,
+  buildConversationPrompt,
   parseAllToolCallsFromText,
   type OpenAITool,
   type SimpleMessage,
 } from "../toolPrompt.js";
+import { SessionCache } from "../sessionCache.js";
 
 export type DaemonRunner = Pick<QoderDaemonManager, "runQuery" | "getModels" | "getState">;
 
@@ -82,6 +84,7 @@ function newId(prefix: string): string {
 
 export function createMessagesRouter(daemon: DaemonRunner): Router {
   const router = Router();
+  const sessionCache = new SessionCache();
 
   router.post("/count_tokens", (req: Request, res: Response) => {
     const { system, messages } = req.body || {};
@@ -113,19 +116,55 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
 
     const openAIMessages = toOpenAIMessages(system, messages);
     const hasTools = Array.isArray(tools) && tools.length > 0;
-    const { systemPrompt, prompt } = splitSystemAndPrompt(
+    const { systemPrompt, prompt: fullPrompt } = splitSystemAndPrompt(
       openAIMessages,
       hasTools ? toOpenAITools(tools) : [],
     );
 
+    const modelKey = requestedModel || "auto";
+    const conv = openAIMessages.filter((m) => m.role !== "system");
+    const cacheHit = sessionCache.match(systemPrompt, modelKey, conv);
+    const activePrompt = cacheHit ? buildConversationPrompt(cacheHit.deltaMessages) : fullPrompt;
+    const resumeSessionId = cacheHit?.sessionId;
+
     const msgId = newId("msg");
-    const inputTokens = Math.max(1, Math.ceil(prompt.length / 4));
+    const inputTokens = Math.max(1, Math.ceil(activePrompt.length / 4));
     const reqStart = Date.now();
     console.log(
-      `[messages] -> model=${requestedModel || "auto"} msgs=${messages.length} sysLen=${systemPrompt.length} promptLen=${prompt.length} stream=${stream} tools=${hasTools ? tools.length : 0}`,
+      `[messages] -> model=${modelKey} msgs=${messages.length} sysLen=${systemPrompt.length} promptLen=${activePrompt.length} stream=${stream} tools=${hasTools ? tools.length : 0} resumed=${Boolean(resumeSessionId)}`,
     );
     const abortController = new AbortController();
     req.on("aborted", () => abortController.abort());
+
+    const executeQuery = async (onTextDelta?: (d: string) => void) => {
+      try {
+        return await daemon.runQuery({
+          prompt: activePrompt,
+          systemPrompt,
+          model: requestedModel,
+          maxTokens: max_tokens,
+          persistSession: true,
+          resumeSessionId,
+          signal: abortController.signal,
+          onTextDelta,
+        });
+      } catch (err) {
+        if (resumeSessionId) {
+          console.warn(`[messages] resume failed (${(err as Error).message}), retrying fresh session`);
+          sessionCache.invalidate(systemPrompt, modelKey, conv);
+          return await daemon.runQuery({
+            prompt: fullPrompt,
+            systemPrompt,
+            model: requestedModel,
+            maxTokens: max_tokens,
+            persistSession: true,
+            signal: abortController.signal,
+            onTextDelta,
+          });
+        }
+        throw err;
+      }
+    };
 
     if (stream) {
       res.setHeader("Content-Type", "text/event-stream");
@@ -160,13 +199,8 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
       }, 15_000);
 
       try {
-        const result = await daemon.runQuery({
-          prompt,
-          systemPrompt,
-          model: requestedModel,
-          maxTokens: max_tokens,
-          signal: abortController.signal,
-          onTextDelta: !hasTools
+        const result = await executeQuery(
+          !hasTools
             ? (delta) => {
                 if (!res.writableEnded) {
                   sendEvent(res, "content_block_delta", {
@@ -177,7 +211,10 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
                 }
               }
             : undefined,
-        });
+        );
+        if (result.sessionId) {
+          sessionCache.save(systemPrompt, modelKey, conv, result.sessionId);
+        }
 
         clearInterval(pingTimer);
         if (res.writableEnded) return;
@@ -239,7 +276,7 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
         sendEvent(res, "message_stop", { type: "message_stop" });
         res.end();
         console.log(
-          `[messages] <- ok model=${result.resolvedModel} stop=${stopReason} textLen=${result.text.length} ms=${Date.now() - reqStart}`,
+          `[messages] <- ok model=${result.resolvedModel} stop=${stopReason} textLen=${result.text.length} ms=${Date.now() - reqStart} credits=${result.totalCredits ?? "n/a"}`,
         );
       } catch (err) {
         clearInterval(pingTimer);
@@ -256,13 +293,10 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
     }
 
     try {
-      const result = await daemon.runQuery({
-        prompt,
-        systemPrompt,
-        model: requestedModel,
-        maxTokens: max_tokens,
-        signal: abortController.signal,
-      });
+      const result = await executeQuery();
+      if (result.sessionId) {
+        sessionCache.save(systemPrompt, modelKey, conv, result.sessionId);
+      }
 
       let contentBlocks: Array<Record<string, unknown>> = [{ type: "text", text: result.text }];
       let stopReason = "end_turn";

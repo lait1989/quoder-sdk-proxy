@@ -103,6 +103,8 @@ export interface RunQueryParams {
   model?: string;
   systemPrompt?: string;
   maxTokens?: number;
+  resumeSessionId?: string;
+  persistSession?: boolean;
   signal?: AbortSignal;
   onTextDelta?: (delta: string) => void;
 }
@@ -110,6 +112,8 @@ export interface RunQueryParams {
 export interface RunQueryResult {
   text: string;
   resolvedModel: string;
+  sessionId?: string;
+  totalCredits?: number;
   durationMs: number;
   durationApiMs: number;
 }
@@ -219,6 +223,8 @@ export class QoderDaemonManager {
     let streamedText = "";
     let finalResultText = "";
     let durationApiMs = 0;
+    let sessionId: string | undefined;
+    let totalCredits: number | undefined;
 
     try {
       const q = query({
@@ -231,7 +237,8 @@ export class QoderDaemonManager {
           systemPrompt:
             params.systemPrompt ||
             "You are a helpful AI assistant. Follow the prompt instructions and function calling JSON format strictly.",
-          persistSession: false,
+          persistSession: params.persistSession ?? false,
+          ...(params.resumeSessionId ? { resume: params.resumeSessionId } : {}),
           includePartialMessages: Boolean(params.onTextDelta),
           ...(chosenWindow ? { extraArgs: { "context-window": String(chosenWindow) } } : {}),
           abortController,
@@ -264,6 +271,10 @@ export class QoderDaemonManager {
           }
         } else if (msg.type === "result") {
           durationApiMs = msg.duration_api_ms || 0;
+          sessionId = msg.session_id;
+          if ("total_credits" in msg && typeof msg.total_credits === "number") {
+            totalCredits = msg.total_credits;
+          }
           if (msg.subtype === "success" && typeof msg.result === "string" && !streamedText && !finalResultText) {
             finalResultText = msg.result;
           } else if (msg.subtype !== "success" && "errors" in msg && Array.isArray(msg.errors) && msg.errors.length > 0) {
@@ -281,6 +292,8 @@ export class QoderDaemonManager {
       return {
         text: streamedText || finalResultText,
         resolvedModel,
+        sessionId,
+        totalCredits,
         durationMs: Date.now() - startedAt,
         durationApiMs,
       };
