@@ -120,6 +120,10 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
 
     const msgId = newId("msg");
     const inputTokens = Math.max(1, Math.ceil(prompt.length / 4));
+    const reqStart = Date.now();
+    console.log(
+      `[messages] -> model=${requestedModel || "auto"} msgs=${messages.length} sysLen=${systemPrompt.length} promptLen=${prompt.length} stream=${stream} tools=${hasTools ? tools.length : 0}`,
+    );
     const abortController = new AbortController();
     req.on("aborted", () => abortController.abort());
 
@@ -234,8 +238,12 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
         });
         sendEvent(res, "message_stop", { type: "message_stop" });
         res.end();
+        console.log(
+          `[messages] <- ok model=${result.resolvedModel} stop=${stopReason} textLen=${result.text.length} ms=${Date.now() - reqStart}`,
+        );
       } catch (err) {
         clearInterval(pingTimer);
+        console.error(`[messages] <- error ms=${Date.now() - reqStart}:`, (err as Error).message);
         if (!res.writableEnded) {
           sendEvent(res, "error", {
             type: "error",
@@ -284,6 +292,7 @@ export function createMessagesRouter(daemon: DaemonRunner): Router {
         usage: { input_tokens: inputTokens, output_tokens: outputTokens },
       });
     } catch (err) {
+      console.error(`[messages] <- error ms=${Date.now() - reqStart}:`, (err as Error).message);
       res.status(500).json({
         type: "error",
         error: { type: "api_error", message: (err as Error).message },
