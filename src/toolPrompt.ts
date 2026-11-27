@@ -63,7 +63,8 @@ export function buildToolSystemPrompt(tools: OpenAITool[]): string {
 
 {"tool_call":{"name":"<function_name>","arguments":<arguments_object>}}
 
-If the user is asking a question, discussing code, or no tool call is needed, answer the user directly in plain text. Only output the JSON object when you actually need to call a tool.
+IMPORTANT: Do NOT attempt native/built-in CLI tool calls — they are disabled. To run any tool (Bash, Read, Edit, Write, Glob, Grep, etc.), output the raw {"tool_call":...} JSON object in your text response and the host client will execute it and return the result.
+If the user is asking a question, discussing code, or no tool call is needed, answer the user directly in plain text.
 
 Available functions:
 ${defs}`;
@@ -130,7 +131,7 @@ export function splitSystemAndPrompt(
   const systemMsg = messages.find((m) => m.role === "system");
   const rawSystemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
   const systemContent = rawSystemContent ? sanitizeSystemPromptForQoder(rawSystemContent) : "";
-  const systemPrompt = [toolSystem, systemContent].filter(Boolean).join("\n\n") ||
+  const systemPrompt = [systemContent, toolSystem].filter(Boolean).join("\n\n") ||
     "You are a helpful AI assistant.";
   const prompt = buildConversationPrompt(messages);
   return { systemPrompt, prompt };
