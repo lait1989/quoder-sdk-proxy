@@ -181,6 +181,22 @@ export class QoderDaemonManager {
     return resolveModelFromList(models, requested);
   }
 
+  async recycleDaemon(): Promise<void> {
+    const old = this.daemon;
+    this.daemon = null;
+    this.startPromise = null;
+    if (old) {
+      try {
+        await Promise.race([
+          old.stop(),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+      } catch {
+        // ignore stop errors on wedged daemon
+      }
+    }
+  }
+
   async runQuery(params: RunQueryParams): Promise<RunQueryResult> {
     const d = await this.ensureDaemon();
     const models = await this.getModels();
@@ -249,6 +265,8 @@ export class QoderDaemonManager {
       }
 
       if (timedOut) {
+        console.warn(`[daemon] Query timed out after ${config.timeoutMs}ms — recycling daemon`);
+        await this.recycleDaemon();
         throw new Error(`Qoder SDK query timed out after ${config.timeoutMs}ms`);
       }
 
