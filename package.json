@@ -1,0 +1,26 @@
+{
+  "name": "qoder-sdk-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "High-speed Anthropic & OpenAI compatible proxy powered by persistent @qoder-ai/qoder-agent-sdk sessions",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:live": "tsx tests/live.e2e.ts"
+  },
+  "dependencies": {
+    "@qoder-ai/qoder-agent-sdk": "latest",
+    "express": "^4.21.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

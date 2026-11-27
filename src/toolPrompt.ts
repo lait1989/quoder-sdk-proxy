@@ -1,0 +1,232 @@
+export interface OpenAITool {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+  };
+}
+
+export interface SimpleMessage {
+  role: string;
+  content: string | Array<{ type?: string; text?: string }>;
+}
+
+export interface ParsedToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export function extractText(content: SimpleMessage["content"]): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((p) => (p && typeof p.text === "string" ? p.text : ""))
+    .join("");
+}
+
+export function messagesToPrompt(messages: SimpleMessage[]): string {
+  if (!messages || messages.length === 0) return "Hello";
+  const systemMsg = messages.find((m) => m.role === "system");
+  const conversation = messages.filter((m) => m.role !== "system").slice(-20);
+
+  const parts: string[] = [];
+  if (systemMsg) {
+    const sys = extractText(systemMsg.content).trim();
+    if (sys) parts.push(`System: ${sys}`);
+  }
+  for (const msg of conversation) {
+    const txt = extractText(msg.content).trim();
+    if (!txt) continue;
+    if (msg.role === "user") parts.push(`User: ${txt}`);
+    else if (msg.role === "assistant") parts.push(`Assistant: ${txt}`);
+    else if (msg.role === "tool") parts.push(`Tool result: ${txt}`);
+  }
+  return parts.join("\n\n") || "Hello";
+}
+
+export function buildToolSystemPrompt(tools: OpenAITool[]): string {
+  if (!tools || tools.length === 0) return "";
+  const defs = tools
+    .filter((t) => t.type === "function" && t.function)
+    .map((t) => {
+      const fn = t.function;
+      const params = fn.parameters ? JSON.stringify(fn.parameters, null, 2) : "{}";
+      return `Function: ${fn.name}\nDescription: ${fn.description || "No description"}\nParameters (JSON Schema): ${params}`;
+    })
+    .join("\n\n");
+
+  return `You have access to the following functions. When you need to call a function, you MUST respond with ONLY a valid JSON object in this exact format and nothing else:
+
+{"tool_call":{"name":"<function_name>","arguments":<arguments_object>}}
+
+Do NOT include any explanation or text before or after the JSON when calling a tool. Only output the raw JSON object.
+
+If you do not need to call a function, respond normally with plain text.
+
+Available functions:
+${defs}`;
+}
+
+export function buildPromptWithTools(messages: SimpleMessage[], tools: OpenAITool[]): string {
+  if (!tools || tools.length === 0) return messagesToPrompt(messages);
+
+  const toolSystem = buildToolSystemPrompt(tools);
+  const systemMsg = messages.find((m) => m.role === "system");
+  const systemContent = systemMsg ? extractText(systemMsg.content).trim() : "";
+  const conversation = messages.filter((m) => m.role !== "system").slice(-20);
+
+  const parts: string[] = [toolSystem];
+  if (systemContent) parts.push(`System context: ${systemContent}`);
+
+  for (const msg of conversation) {
+    const txt = extractText(msg.content).trim();
+    if (!txt) continue;
+    if (msg.role === "user") parts.push(`User: ${txt}`);
+    else if (msg.role === "assistant") parts.push(`Assistant: ${txt}`);
+    else if (msg.role === "tool") parts.push(`Tool result: ${txt}`);
+  }
+  return parts.join("\n\n");
+}
+
+/**
+ * Repairs common LLM JSON formatting issues inside string literals:
+ * - unescaped double quotes (e.g. `-H "Cookie: ..."`)
+ * - invalid JSON backslash escapes (e.g. `\|` in grep)
+ * - raw newlines, carriage returns, tabs
+ */
+export function sanitizeJsonStrings(raw: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inStr) {
+      if (esc) {
+        if ('"\\/bfnrtu'.includes(ch)) {
+          out += "\\" + ch;
+        } else {
+          out += "\\\\" + ch;
+        }
+        esc = false;
+      } else if (ch === "\\") {
+        esc = true;
+      } else if (ch === '"') {
+        let j = i + 1;
+        while (j < raw.length && (raw[j] === " " || raw[j] === "\t" || raw[j] === "\n" || raw[j] === "\r")) {
+          j++;
+        }
+        const nextCh = raw[j];
+        if (nextCh === undefined || nextCh === "," || nextCh === "}" || nextCh === "]" || nextCh === ":") {
+          out += ch;
+          inStr = false;
+        } else {
+          out += '\\"';
+        }
+      } else if (ch === "\n") {
+        out += "\\n";
+      } else if (ch === "\r") {
+        out += "\\r";
+      } else if (ch === "\t") {
+        out += "\\t";
+      } else {
+        out += ch;
+      }
+    } else {
+      if (ch === '"') inStr = true;
+      out += ch;
+    }
+  }
+  return out;
+}
+
+function tryParseToolJson(raw: string): ParsedToolCall | null {
+  for (const candidate of [raw, sanitizeJsonStrings(raw)]) {
+    try {
+      const parsed = JSON.parse(candidate) as {
+        tool_call?: { name?: string; arguments?: Record<string, unknown> };
+      };
+      if (parsed?.tool_call?.name) {
+        return {
+          name: parsed.tool_call.name,
+          arguments: parsed.tool_call.arguments ?? {},
+        };
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
+function parseSingleChunk(chunk: string): ParsedToolCall | null {
+  const sanitized = sanitizeJsonStrings(chunk);
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let end = -1;
+
+  for (let i = 0; i < sanitized.length; i++) {
+    const ch = sanitized[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+    } else {
+      if (ch === '"') inStr = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+  }
+
+  if (end > 0) {
+    const res = tryParseToolJson(sanitized.slice(0, end));
+    if (res) return res;
+  }
+
+  if (depth > 0 && depth <= 3) {
+    const trimmed = sanitized.replace(/\s*<\/?tool_call>\s*$/i, "");
+    const res = tryParseToolJson(trimmed + "}".repeat(depth));
+    if (res) return res;
+  }
+
+  return null;
+}
+
+export function parseAllToolCallsFromText(text: string): ParsedToolCall[] {
+  if (!text || !text.includes('"tool_call"')) return [];
+
+  const results: ParsedToolCall[] = [];
+  const starts: number[] = [];
+  const re = /\{\s*"tool_call"\s*:/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    starts.push(m.index);
+  }
+
+  for (let idx = 0; idx < starts.length; idx++) {
+    const start = starts[idx];
+    const nextStart = idx + 1 < starts.length ? starts[idx + 1] : text.length;
+    const chunk = text.slice(start, nextStart).replace(/\s*<\/?tool_call>\s*/gi, "\n");
+    const parsed = parseSingleChunk(chunk);
+    if (parsed) results.push(parsed);
+  }
+
+  if (results.length === 0 && starts.length > 0) {
+    const start = starts[0];
+    const lastBrace = text.lastIndexOf("}");
+    if (lastBrace > start) {
+      const fallback = tryParseToolJson(text.slice(start, lastBrace + 1));
+      if (fallback) results.push(fallback);
+    }
+  }
+
+  return results;
+}
