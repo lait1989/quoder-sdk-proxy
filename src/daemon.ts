@@ -85,6 +85,19 @@ export function resolveModelFromList(models: ModelInfo[], requested?: string): s
   return "auto";
 }
 
+export function resolveContextWindow(
+  models: ModelInfo[],
+  resolvedModel: string,
+  targetWindow: number,
+): number | undefined {
+  if (!targetWindow || targetWindow <= 0) return undefined;
+  const info = models.find((m) => m.value === resolvedModel || m.modelId === resolvedModel);
+  const windows = info?.availableContextWindows;
+  if (!Array.isArray(windows) || windows.length === 0) return undefined;
+  const eligible = windows.filter((w) => w <= targetWindow).sort((a, b) => b - a);
+  return eligible[0];
+}
+
 export interface RunQueryParams {
   prompt: string;
   model?: string;
@@ -170,7 +183,9 @@ export class QoderDaemonManager {
 
   async runQuery(params: RunQueryParams): Promise<RunQueryResult> {
     const d = await this.ensureDaemon();
-    const resolvedModel = await this.resolveModel(params.model);
+    const models = await this.getModels();
+    const resolvedModel = resolveModelFromList(models, params.model);
+    const chosenWindow = resolveContextWindow(models, resolvedModel, config.contextWindow);
     const abortController = new AbortController();
 
     if (params.signal) {
@@ -198,6 +213,7 @@ export class QoderDaemonManager {
             "You are a helpful AI assistant. Follow the prompt instructions and function calling JSON format strictly.",
           persistSession: false,
           includePartialMessages: Boolean(params.onTextDelta),
+          ...(chosenWindow ? { extraArgs: { "context-window": String(chosenWindow) } } : {}),
           abortController,
         },
       });

@@ -6,6 +6,7 @@ export interface Config {
   timeoutMs: number;
   modelRefreshTtlMs: number;
   maxOutputTokens: string;
+  contextWindow: number;
 }
 
 export const config: Config = {
@@ -16,4 +17,5 @@ export const config: Config = {
   timeoutMs: parseInt(process.env.QODER_TIMEOUT_MS || "300000", 10),
   modelRefreshTtlMs: parseInt(process.env.MODEL_REFRESH_TTL_MS || "300000", 10),
   maxOutputTokens: process.env.QODER_MAX_OUTPUT_TOKENS || "32k",
+  contextWindow: parseInt(process.env.QODER_CONTEXT_WINDOW || "1000000", 10),
 };
